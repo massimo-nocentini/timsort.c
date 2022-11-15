@@ -25,17 +25,6 @@ typedef int item_t;
 
 typedef int (*comparer_t)(item_t v, item_t w, mergestate_t *ms);
 
-typedef void (*callback_t)(item_t *, int, void *);
-
-typedef struct s_list_t {
-    signed_size_t ob_size;
-    
-    /* Vector of pointers to list_t elements.  list_t[0] is ob_item[0], etc. */
-    item_t *ob_item;
-
-} list_t;
-
-
 /* Lots of code for an adaptive, stable, natural mergesort.  There are many
  * pieces to this algorithm; read list_tsort.txt for overviews and details.
  */
