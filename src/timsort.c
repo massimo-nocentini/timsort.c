@@ -833,39 +833,27 @@ static int merge_collapse(mergestate_t *ms)
     return 0;
 }
 
-int timsort(int nel, int reverse, comparer_t cmp, void *userdata, callback_t callback) {
+sortslice_t timsort(int nel, int reverse, comparer_t cmp, void *userdata) {
 
     mergestate_t ms;
     signed_size_t nremaining;
     signed_size_t minrun;
     sortslice_t lo;
     signed_size_t saved_ob_size;
-    item_t *saved_ob_item;
-    item_t *final_ob_item;
-    list_t self;            /* guilty until proved innocent */
-    int result = 1;         /* guilty until proved innocent, again. */
+    sortslice_t saved_ob_item;
+
+    int result = 1;         /* guilty until proved innocent. */
 
     // pass the reference to the context we are in, in particular to access the Lua state.
     ms.cmp = cmp;
     ms.userdata = userdata;
 
-    self.ob_size = nel;
-    self.ob_item = (item_t *) malloc (sizeof(item_t ) * nel);
+    saved_ob_size = nel;
+    saved_ob_item = (item_t *) malloc (sizeof(item_t ) * nel);
     
     for (int i = 0; i < nel; i++) {
-        self.ob_item[i] = i + 1;   // simply prepare the identity permutation.
+        saved_ob_item[i] = i + 1;   // simply prepare the identity permutation.
     }
-
-    /* The list_t is temporarily made empty, so that mutations performed
-     * by comparison functions can't affect the slice of memory we're
-     * sorting (allowing mutations during sorting is a core-dump
-     * factory, since ob_item may change).
-     */
-    saved_ob_size = self.ob_size;
-    saved_ob_item = self.ob_item;
-
-    self.ob_size = 0;
-    self.ob_item = NULL;
     
     lo = saved_ob_item;
 
@@ -890,15 +878,14 @@ int timsort(int nel, int reverse, comparer_t cmp, void *userdata, callback_t cal
 
         /* Identify next run. */
         n = count_run(&ms, lo , lo  + nremaining, &descending);
-        if (n < 0)
-            goto fail;
+        if (n < 0) goto fail;
+
         if (descending)
             reverse_sortslice_t(&lo, n);
         /* If short, extend to min(minrun, nremaining). */
         if (n < minrun) {
             const signed_size_t force = nremaining <= minrun ? nremaining : minrun;
-            if (binarysort(&ms, lo, lo  + force, lo  + n) < 0)
-                goto fail;
+            if (binarysort(&ms, lo, lo  + force, lo  + n) < 0) goto fail;
             n = force;
         }
         /* Push run onto pending-runs stack, and maybe merge. */
@@ -906,15 +893,15 @@ int timsort(int nel, int reverse, comparer_t cmp, void *userdata, callback_t cal
         ms.pending[ms.n].base = lo;
         ms.pending[ms.n].len = n;
         ++ms.n;
-        if (merge_collapse(&ms) < 0)
-            goto fail;
+        if (merge_collapse(&ms) < 0) goto fail;
+
         /* Advance to find next run. */
         sortslice_t_advance(&lo, n);
         nremaining -= n;
     } while (nremaining);
 
-    if (merge_force_collapse(&ms) < 0)
-        goto fail;
+    if (merge_force_collapse(&ms) < 0) goto fail;
+    
     assert(ms.n == 1);
     assert(ms.pending[0].base  == saved_ob_item);
     assert(ms.pending[0].len == saved_ob_size);
@@ -923,29 +910,18 @@ int timsort(int nel, int reverse, comparer_t cmp, void *userdata, callback_t cal
 succeed:
     result = 0;
 
-    callback (saved_ob_item, nel, userdata);
-
+    if (reverse && saved_ob_size > 1) 
+        reverse_slice(saved_ob_item, saved_ob_item + saved_ob_size);
+    
 fail:
 
-    if (reverse && saved_ob_size > 1) reverse_slice(saved_ob_item, saved_ob_item + saved_ob_size);
-
     merge_freemem(&ms);
-
-//keyfunc_fail:
-    final_ob_item = self.ob_item;
-    self.ob_size = saved_ob_size;
-    self.ob_item = saved_ob_item;
-    if (final_ob_item != NULL) {
-        /* we cannot use _list_t_clear() for this because it does not
-           guarantee that the list_t is really empty when it returns */
-        /*while (--i >= 0) {
-            Py_XDECREF(final_ob_item[i]);
-        }*/
-        free(final_ob_item);
-    }
     
-    free (self.ob_item);
+    if (result) {
+        free (saved_ob_item);
+        return NULL;
+    }
 
-    return result;    
+    return saved_ob_item;
 }
 
