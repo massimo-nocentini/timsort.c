@@ -833,27 +833,18 @@ static int merge_collapse(mergestate_t *ms)
     return 0;
 }
 
-sortslice_t timsort(int nel, int reverse, comparer_t cmp, void *userdata) {
+sortslice_t timsort (sortslice_t saved_ob_item, signed_size_t saved_ob_size, int reverse, comparer_t cmp, void *userdata) {
 
     mergestate_t ms;
     signed_size_t nremaining;
     signed_size_t minrun;
     sortslice_t lo;
-    signed_size_t saved_ob_size;
-    sortslice_t saved_ob_item;
-
-    int result = 1;         /* guilty until proved innocent. */
+    
+    int guilty = 1;         /* guilty until proved innocent. */
 
     // pass the reference to the context we are in, in particular to access the Lua state.
     ms.cmp = cmp;
     ms.userdata = userdata;
-
-    saved_ob_size = nel;
-    saved_ob_item = (item_t *) malloc (sizeof(item_t ) * nel);
-    
-    for (int i = 0; i < nel; i++) {
-        saved_ob_item[i] = i + 1;   // simply prepare the identity permutation.
-    }
     
     lo = saved_ob_item;
 
@@ -878,10 +869,11 @@ sortslice_t timsort(int nel, int reverse, comparer_t cmp, void *userdata) {
 
         /* Identify next run. */
         n = count_run(&ms, lo , lo  + nremaining, &descending);
+        
         if (n < 0) goto fail;
 
-        if (descending)
-            reverse_sortslice_t(&lo, n);
+        if (descending) reverse_sortslice_t(&lo, n);
+        
         /* If short, extend to min(minrun, nremaining). */
         if (n < minrun) {
             const signed_size_t force = nremaining <= minrun ? nremaining : minrun;
@@ -908,20 +900,14 @@ sortslice_t timsort(int nel, int reverse, comparer_t cmp, void *userdata) {
     lo = ms.pending[0].base;
 
 succeed:
-    result = 0;
+    guilty = 0;
 
     if (reverse && saved_ob_size > 1) 
         reverse_slice(saved_ob_item, saved_ob_item + saved_ob_size);
     
 fail:
-
     merge_freemem(&ms);
-    
-    if (result) {
-        free (saved_ob_item);
-        return NULL;
-    }
 
-    return saved_ob_item;
+    return guilty ? NULL : saved_ob_item;
 }
 

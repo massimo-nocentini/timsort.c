@@ -103,4 +103,4 @@ ascending or descending, according to their function values.
 
 The reverse flag can be set to sort in descending order.
 [clinic start generated code]*/
-sortslice_t timsort(int, int, comparer_t, void *);
+sortslice_t timsort (sortslice_t, signed_size_t, int, comparer_t, void *);
