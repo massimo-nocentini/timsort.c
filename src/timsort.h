@@ -1,35 +1,50 @@
 
-/* 
-	This is a glue c file for importing delta client c functions into Lua workflow.
-*/
 
-#include <stdint.h>
+#include <limits.h>
 
+#define PY_SSIZE_T_MAX __LONG_MAX__
+#define Py_LOCAL_INLINE(type) static inline type
+#define SIZEOF_SIZE_T sizeof(size_t)
+#define MAX_MERGE_PENDING (SIZEOF_SIZE_T * 8)
 
-/* The maximum number of entries in a mergestate_t's pending-runs stack.
- * This is enough to sort arrays of size up to about
- *     32 * phi ** MAX_MERGE_PENDING
- * where phi ~= 1.618.  85 is ridiculouslylarge enough, good for an array
- * with 2**64 elements.
+/* The maximum number of entries in a MergeState's pending-runs stack.
+ * For a list with n elements, this needs at most floor(log2(n)) + 1 entries
+ * even if we didn't force runs to a minimal length.  So the number of bits
+ * in a Py_ssize_t is plenty large enough for all cases.
  */
-#define MAX_MERGE_PENDING 85
+#define MAX_MERGE_PENDING (SIZEOF_SIZE_T * 8)
+
+/* When we get into galloping mode, we stay there until both runs win less
+ * often than MIN_GALLOP consecutive times.  See listsort.txt for more info.
+ */
+#define MIN_GALLOP 7
 
 /* Avoid malloc for small temp arrays. */
-#define mergestate_t_TEMP_SIZE 256
+#define MERGESTATE_TEMP_SIZE 256
 
-typedef intptr_t signed_size_t;
+/* The largest value of minrun. This must be a power of 2, and >= 1, so that
+ * the compute_minrun() algorithm guarantees to return a result no larger than
+ * this,
+ */
+#define MAX_MINRUN 64
+// #if ((MAX_MINRUN) < 1) || ((MAX_MINRUN) & ((MAX_MINRUN) - 1))
+// #error "MAX_MINRUN must be a power of 2, and >= 1"
+// #endif
 
-typedef struct s_mergestate mergestate_t;
+typedef __ssize_t ssize_t;
+typedef ssize_t Py_ssize_t;
 
-typedef int item_t;
-
-typedef int (*comparer_t)(item_t v, item_t w, mergestate_t *ms);
+typedef struct PyObject_s
+{
+    void *external_object;
+    int index;
+} PyObject;
 
 /* Lots of code for an adaptive, stable, natural mergesort.  There are many
- * pieces to this algorithm; read list_tsort.txt for overviews and details.
+ * pieces to this algorithm; read listsort.txt for overviews and details.
  */
 
-/* A sortslice_t contains a pointer to an array of keys and a pointer to
+/* A sortslice contains a pointer to an array of keys and a pointer to
  * an array of corresponding values.  In other words, keys[i]
  * corresponds with values[i].  If values == NULL, then the keys are
  * also the values.
@@ -38,28 +53,40 @@ typedef int (*comparer_t)(item_t v, item_t w, mergestate_t *ms);
  * values are always moved in sync.
  */
 
-typedef item_t * sortslice_t;
+typedef struct
+{
+    PyObject **keys;
+    PyObject **values;
+} sortslice;
 
-/* One mergestate_t exists on the stack per invocation of mergesort.  It's just
+/* One MergeState exists on the stack per invocation of mergesort.  It's just
  * a convenient way to pass state around among the helper functions.
  */
-struct s_slice {
-    sortslice_t base;
-    signed_size_t len;
+struct s_slice
+{
+    sortslice base;
+    Py_ssize_t len; /* length of run */
+    int power;      /* node "level" for powersort merge strategy */
 };
 
-struct s_mergestate {
+typedef struct s_MergeState MergeState;
+
+struct s_MergeState
+{
     /* This controls when we get *into* galloping mode.  It's initialized
      * to MIN_GALLOP.  merge_lo and merge_hi tend to nudge it higher for
      * random data, and lower for highly structured data.
      */
-    signed_size_t min_gallop;
+    Py_ssize_t min_gallop;
+
+    Py_ssize_t listlen;  /* len(input_list) - read only */
+    PyObject **basekeys; /* base address of keys array - read only */
 
     /* 'a' is temp storage to help with merges.  It contains room for
      * alloced entries.
      */
-    sortslice_t a;        /* may point to temparray below */
-    signed_size_t alloced;
+    sortslice a; /* may point to temparray below */
+    Py_ssize_t alloced;
 
     /* A stack of n pending runs yet to be merged.  Run #i starts at
      * address base[i] and extends for len[i] elements.  It's always
@@ -74,33 +101,41 @@ struct s_mergestate {
     struct s_slice pending[MAX_MERGE_PENDING];
 
     /* 'a' points to this when possible, rather than muck with malloc. */
-    item_t temparray[mergestate_t_TEMP_SIZE];
+    PyObject *temparray[MERGESTATE_TEMP_SIZE];
 
-    comparer_t cmp;
+    /* This is the function we will use to compare two keys,
+     * even when none of our special cases apply and we have to use
+     * safe_object_compare. */
+    int (*key_compare)(PyObject *, PyObject *, MergeState *);
 
-    void *userdata;
+    /* This function is used by unsafe_object_compare to optimize comparisons
+     * when we know our list is type-homogeneous but we can't assume anything else.
+     * In the pre-sort check it is set equal to Py_TYPE(key)->tp_richcompare */
+    PyObject *(*key_richcompare)(PyObject *, PyObject *, int);
+
+    /* This function is used by unsafe_tuple_compare to compare the first elements
+     * of tuples. It may be set to safe_object_compare, but the idea is that hopefully
+     * we can assume more, and use one of the special-case compares. */
+    int (*tuple_elem_compare)(PyObject *, PyObject *, MergeState *);
 };
 
-/* An adaptive, stable, natural mergesort.  See list_tsort.txt.
- * Returns Py_None on success, NULL on error.  Even in case of error, the
- * list_t will be some permutation of its input state (nothing is lost or
- * duplicated).
- */
-/*[clinic input]
-list_t.sort
+#define Py_SIZE(ob) ob->ob_base.ob_size
+#define Py_SET_SIZE(ob, size) ob->ob_base.ob_size = size
+#define PyMem_FREE(p) free((p))
 
-    *
-    key as keyfunc: object = None
-    reverse: bool(accept={int}) = False
+typedef struct
+{
+    PyObject ob_base;
+    Py_ssize_t ob_size; /* Number of items in variable part */
+} PyVarObject;
 
-Sort the list_t in ascending order and return None.
+typedef struct PyListObject_s
+{
+    PyVarObject ob_base;
+    PyObject **ob_item;
+    Py_ssize_t allocated;
+} PyListObject;
 
-The sort is in-place (i.e. the list_t itself is modified) and stable (i.e. the
-order of two equal elements is maintained).
+typedef PyObject *(*keyfunc_t)(PyObject *obj, MergeState *ms);
 
-If a key function is given, apply it once to each list_t item and sort them,
-ascending or descending, according to their function values.
-
-The reverse flag can be set to sort in descending order.
-[clinic start generated code]*/
-sortslice_t timsort (sortslice_t, signed_size_t, int, comparer_t, void *);
+PyObject *list_sort_impl(PyListObject *self, keyfunc_t keyfunc, int reverse);

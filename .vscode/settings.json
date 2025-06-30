@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "compare": "c",
+        "type_traits": "c",
+        "utility": "c",
+        "local_lim.h": "c"
+    }
+}
