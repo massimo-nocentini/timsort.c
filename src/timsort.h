@@ -30,11 +30,7 @@
 
 typedef __ssize_t timsort_ssize_t;
 
-typedef struct
-{
-    void *external_object;
-    int index;
-} timsort_object_t;
+typedef void *timsort_object_t;
 
 /* Lots of code for an adaptive, stable, natural mergesort.  There are many
  * pieces to this algorithm; read listsort.txt for overviews and details.
