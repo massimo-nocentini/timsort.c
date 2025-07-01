@@ -3,6 +3,7 @@
         "compare": "c",
         "type_traits": "c",
         "utility": "c",
-        "local_lim.h": "c"
+        "local_lim.h": "c",
+        "initializer_list": "c"
     }
 }

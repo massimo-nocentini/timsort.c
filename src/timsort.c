@@ -13,14 +13,14 @@
 
 /* Reverse a slice of a list in place, from lo up to (exclusive) hi. */
 static void
-reverse_slice(PyObject **lo, PyObject **hi)
+reverse_slice(timsort_object_t **lo, timsort_object_t **hi)
 {
     assert(lo && hi);
 
     --hi;
     while (lo < hi)
     {
-        PyObject *t = *lo;
+        timsort_object_t *t = *lo;
         *lo = *hi;
         *hi = t;
         ++lo;
@@ -28,54 +28,42 @@ reverse_slice(PyObject **lo, PyObject **hi)
     }
 }
 
-Py_LOCAL_INLINE(void)
-    sortslice_copy(sortslice *s1, Py_ssize_t i, sortslice *s2, Py_ssize_t j)
+TIMSORT_LOCAL_INLINE(void)
+    sortslice_copy(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j)
 {
     s1->keys[i] = s2->keys[j];
-    if (s1->values != NULL)
-        s1->values[i] = s2->values[j];
 }
 
-Py_LOCAL_INLINE(void)
-    sortslice_copy_incr(sortslice *dst, sortslice *src)
+TIMSORT_LOCAL_INLINE(void)
+    sortslice_copy_incr(timsort_sortslice_t *dst, timsort_sortslice_t *src)
 {
     *dst->keys++ = *src->keys++;
-    if (dst->values != NULL)
-        *dst->values++ = *src->values++;
 }
 
-Py_LOCAL_INLINE(void)
-    sortslice_copy_decr(sortslice *dst, sortslice *src)
+TIMSORT_LOCAL_INLINE(void)
+    sortslice_copy_decr(timsort_sortslice_t *dst, timsort_sortslice_t *src)
 {
     *dst->keys-- = *src->keys--;
-    if (dst->values != NULL)
-        *dst->values-- = *src->values--;
 }
 
-Py_LOCAL_INLINE(void)
-    sortslice_memcpy(sortslice *s1, Py_ssize_t i, sortslice *s2, Py_ssize_t j,
-                     Py_ssize_t n)
+TIMSORT_LOCAL_INLINE(void)
+    sortslice_memcpy(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j,
+                     timsort_ssize_t n)
 {
-    memcpy(&s1->keys[i], &s2->keys[j], sizeof(PyObject *) * n);
-    if (s1->values != NULL)
-        memcpy(&s1->values[i], &s2->values[j], sizeof(PyObject *) * n);
+    memcpy(&s1->keys[i], &s2->keys[j], sizeof(timsort_object_t *) * n);
 }
 
-Py_LOCAL_INLINE(void)
-    sortslice_memmove(sortslice *s1, Py_ssize_t i, sortslice *s2, Py_ssize_t j,
-                      Py_ssize_t n)
+TIMSORT_LOCAL_INLINE(void)
+    sortslice_memmove(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j,
+                      timsort_ssize_t n)
 {
-    memmove(&s1->keys[i], &s2->keys[j], sizeof(PyObject *) * n);
-    if (s1->values != NULL)
-        memmove(&s1->values[i], &s2->values[j], sizeof(PyObject *) * n);
+    memmove(&s1->keys[i], &s2->keys[j], sizeof(timsort_object_t *) * n);
 }
 
-Py_LOCAL_INLINE(void)
-    sortslice_advance(sortslice *slice, Py_ssize_t n)
+TIMSORT_LOCAL_INLINE(void)
+    sortslice_advance(timsort_sortslice_t *slice, timsort_ssize_t n)
 {
     slice->keys += n;
-    if (slice->values != NULL)
-        slice->values += n;
 }
 
 /* Comparison function: ms->key_compare, which is set at run-time in
@@ -87,7 +75,7 @@ Py_LOCAL_INLINE(void)
 
 /* Compare X to Y via "<".  Goto "fail" if the comparison raises an
    error.  Else "k" is set to true iff X<Y, and an "if (k)" block is
-   started.  It makes more sense in context <wink>.  X and Y are PyObject*s.
+   started.  It makes more sense in context <wink>.  X and Y are timsort_object_t*s.
 */
 #define IFLT(X, Y)            \
     if ((k = ISLT(X, Y)) < 0) \
@@ -106,14 +94,13 @@ Py_LOCAL_INLINE(void)
    the input (nothing is lost or duplicated).
 */
 static int
-binarysort(MergeState *ms, const sortslice *ss, Py_ssize_t n, Py_ssize_t ok)
+binarysort(timsort_mergestate_t *ms, const timsort_sortslice_t *ss, timsort_ssize_t n, timsort_ssize_t ok)
 {
-    Py_ssize_t k; /* for IFLT macro expansion */
-    PyObject **const a = ss->keys;
-    PyObject **const v = ss->values;
-    const bool has_values = v != NULL;
-    PyObject *pivot;
-    Py_ssize_t M;
+    timsort_ssize_t k; /* for IFLT macro expansion */
+    timsort_object_t **const a = ss->keys;
+
+    timsort_object_t *pivot;
+    timsort_ssize_t M;
 
     assert(0 <= ok && ok <= n && 1 <= n && n <= MAX_MINRUN);
     /* assert a[:ok] is sorted */
@@ -143,7 +130,7 @@ binarysort(MergeState *ms, const sortslice *ss, Py_ssize_t n, Py_ssize_t ok)
        of 64 is so small that the key and value pointers all fit in a corner
        of L1 cache, and moving things around in that is very fast. */
 #if 0 // ordinary insertion sort.
-    PyObject * vpivot = NULL;
+    timsort_object_t * vpivot = NULL;
     for (; ok < n; ++ok) {
         pivot = a[ok];
         if (has_values)
@@ -169,7 +156,7 @@ binarysort(MergeState *ms, const sortslice *ss, Py_ssize_t n, Py_ssize_t ok)
             v[M + 1] = vpivot;
     }
 #else // binary insertion sort
-    Py_ssize_t L, R;
+    timsort_ssize_t L, R;
     for (; ok < n; ++ok)
     {
         /* set L to where a[ok] belongs */
@@ -185,7 +172,7 @@ binarysort(MergeState *ms, const sortslice *ss, Py_ssize_t n, Py_ssize_t ok)
         do
         {
             /* don't do silly ;-) things to prevent overflow when finding
-               the midpoint; L and R are very far from filling a Py_ssize_t */
+               the midpoint; L and R are very far from filling a timsort_ssize_t */
             M = (L + R) >> 1;
 #if 1 // straightforward, but highly unpredictable branch on random data
             IFLT(pivot, a[M])
@@ -200,7 +187,7 @@ binarysort(MergeState *ms, const sortslice *ss, Py_ssize_t n, Py_ssize_t ok)
             k = ISLT(pivot, a[M]);
             if (k < 0)
                 goto fail;
-            Py_ssize_t Mp1 = M + 1;
+            timsort_ssize_t Mp1 = M + 1;
             R = k ? M : R;
             L = k ? L : Mp1;
 #endif
@@ -214,13 +201,6 @@ binarysort(MergeState *ms, const sortslice *ss, Py_ssize_t n, Py_ssize_t ok)
         for (M = ok; M > L; --M)
             a[M] = a[M - 1];
         a[L] = pivot;
-        if (has_values)
-        {
-            pivot = v[ok];
-            for (M = ok; M > L; --M)
-                v[M] = v[M - 1];
-            v[L] = pivot;
-        }
     }
 #endif // pick binary or regular insertion sort
     return 0;
@@ -230,11 +210,9 @@ fail:
 }
 
 static void
-sortslice_reverse(sortslice *s, Py_ssize_t n)
+sortslice_reverse(timsort_sortslice_t *s, timsort_ssize_t n)
 {
     reverse_slice(s->keys, &s->keys[n]);
-    if (s->values != NULL)
-        reverse_slice(s->values, &s->values[n]);
 }
 
 /*
@@ -245,12 +223,12 @@ upon return.
 
 Returns -1 in case of error.
 */
-static Py_ssize_t
-count_run(MergeState *ms, sortslice *slo, Py_ssize_t nremaining)
+static timsort_ssize_t
+count_run(timsort_mergestate_t *ms, timsort_sortslice_t *slo, timsort_ssize_t nremaining)
 {
-    Py_ssize_t k; /* used by IFLT macro expansion */
-    Py_ssize_t n;
-    PyObject **const lo = slo->keys;
+    timsort_ssize_t k; /* used by IFLT macro expansion */
+    timsort_ssize_t n;
+    timsort_object_t **const lo = slo->keys;
 
     /* In general, as things go on we've established that the slice starts
        with a monotone run of n elements, starting at lo. */
@@ -261,7 +239,7 @@ count_run(MergeState *ms, sortslice *slo, Py_ssize_t nremaining)
 #define REVERSE_LAST_NEQ                    \
     if (neq)                                \
     {                                       \
-        sortslice slice = *slo;             \
+        timsort_sortslice_t slice = *slo;   \
         ++neq;                              \
         sortslice_advance(&slice, n - neq); \
         sortslice_reverse(&slice, neq);     \
@@ -307,7 +285,7 @@ count_run(MergeState *ms, sortslice *slo, Py_ssize_t nremaining)
      * fly. Their original order will be restored at the end by the whole-slice
      * reversal.
      */
-    Py_ssize_t neq = 0;
+    timsort_ssize_t neq = 0;
     for (; n < nremaining; ++n)
     {
         IF_NEXT_SMALLER
@@ -368,12 +346,12 @@ key, and the last n-k should follow key.
 
 Returns -1 on error.  See listsort.txt for info on the method.
 */
-static Py_ssize_t
-gallop_left(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize_t hint)
+static timsort_ssize_t
+gallop_left(timsort_mergestate_t *ms, timsort_object_t *key, timsort_object_t **a, timsort_ssize_t n, timsort_ssize_t hint)
 {
-    Py_ssize_t ofs;
-    Py_ssize_t lastofs;
-    Py_ssize_t k;
+    timsort_ssize_t ofs;
+    timsort_ssize_t lastofs;
+    timsort_ssize_t k;
 
     assert(key && a && n > 0 && hint >= 0 && hint < n);
 
@@ -385,13 +363,13 @@ gallop_left(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize_
         /* a[hint] < key -- gallop right, until
          * a[hint + lastofs] < key <= a[hint + ofs]
          */
-        const Py_ssize_t maxofs = n - hint; /* &a[n-1] is highest */
+        const timsort_ssize_t maxofs = n - hint; /* &a[n-1] is highest */
         while (ofs < maxofs)
         {
             IFLT(a[ofs], key)
             {
                 lastofs = ofs;
-                assert(ofs <= (PY_SSIZE_T_MAX - 1) / 2);
+                assert(ofs <= (TIMSORT_SSIZE_T_MAX - 1) / 2);
                 ofs = (ofs << 1) + 1;
             }
             else /* key <= a[hint + ofs] */
@@ -408,14 +386,14 @@ gallop_left(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize_
         /* key <= a[hint] -- gallop left, until
          * a[hint - ofs] < key <= a[hint - lastofs]
          */
-        const Py_ssize_t maxofs = hint + 1; /* &a[0] is lowest */
+        const timsort_ssize_t maxofs = hint + 1; /* &a[0] is lowest */
         while (ofs < maxofs)
         {
             IFLT(*(a - ofs), key)
             break;
             /* key <= a[hint - ofs] */
             lastofs = ofs;
-            assert(ofs <= (PY_SSIZE_T_MAX - 1) / 2);
+            assert(ofs <= (TIMSORT_SSIZE_T_MAX - 1) / 2);
             ofs = (ofs << 1) + 1;
         }
         if (ofs > maxofs)
@@ -435,7 +413,7 @@ gallop_left(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize_
     ++lastofs;
     while (lastofs < ofs)
     {
-        Py_ssize_t m = lastofs + ((ofs - lastofs) >> 1);
+        timsort_ssize_t m = lastofs + ((ofs - lastofs) >> 1);
 
         IFLT(a[m], key)
         lastofs = m + 1; /* a[m] < key */
@@ -462,12 +440,12 @@ The code duplication is massive, but this is enough different given that
 we're sticking to "<" comparisons that it's much harder to follow if
 written as one routine with yet another "left or right?" flag.
 */
-static Py_ssize_t
-gallop_right(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize_t hint)
+static timsort_ssize_t
+gallop_right(timsort_mergestate_t *ms, timsort_object_t *key, timsort_object_t **a, timsort_ssize_t n, timsort_ssize_t hint)
 {
-    Py_ssize_t ofs;
-    Py_ssize_t lastofs;
-    Py_ssize_t k;
+    timsort_ssize_t ofs;
+    timsort_ssize_t lastofs;
+    timsort_ssize_t k;
 
     assert(key && a && n > 0 && hint >= 0 && hint < n);
 
@@ -479,13 +457,13 @@ gallop_right(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize
         /* key < a[hint] -- gallop left, until
          * a[hint - ofs] <= key < a[hint - lastofs]
          */
-        const Py_ssize_t maxofs = hint + 1; /* &a[0] is lowest */
+        const timsort_ssize_t maxofs = hint + 1; /* &a[0] is lowest */
         while (ofs < maxofs)
         {
             IFLT(key, *(a - ofs))
             {
                 lastofs = ofs;
-                assert(ofs <= (PY_SSIZE_T_MAX - 1) / 2);
+                assert(ofs <= (TIMSORT_SSIZE_T_MAX - 1) / 2);
                 ofs = (ofs << 1) + 1;
             }
             else /* a[hint - ofs] <= key */
@@ -503,14 +481,14 @@ gallop_right(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize
         /* a[hint] <= key -- gallop right, until
          * a[hint + lastofs] <= key < a[hint + ofs]
          */
-        const Py_ssize_t maxofs = n - hint; /* &a[n-1] is highest */
+        const timsort_ssize_t maxofs = n - hint; /* &a[n-1] is highest */
         while (ofs < maxofs)
         {
             IFLT(key, a[ofs])
             break;
             /* a[hint + ofs] <= key */
             lastofs = ofs;
-            assert(ofs <= (PY_SSIZE_T_MAX - 1) / 2);
+            assert(ofs <= (TIMSORT_SSIZE_T_MAX - 1) / 2);
             ofs = (ofs << 1) + 1;
         }
         if (ofs > maxofs)
@@ -529,7 +507,7 @@ gallop_right(MergeState *ms, PyObject *key, PyObject **a, Py_ssize_t n, Py_ssize
     ++lastofs;
     while (lastofs < ofs)
     {
-        Py_ssize_t m = lastofs + ((ofs - lastofs) >> 1);
+        timsort_ssize_t m = lastofs + ((ofs - lastofs) >> 1);
 
         IFLT(key, a[m])
         ofs = m;              /* key < a[m] */
@@ -542,33 +520,12 @@ fail:
     return -1;
 }
 
-/* Conceptually a MergeState's constructor. */
+/* Conceptually a timsort_mergestate_t's constructor. */
 static void
-merge_init(MergeState *ms, Py_ssize_t list_size, int has_keyfunc,
-           sortslice *lo)
+merge_init(timsort_mergestate_t *ms, timsort_ssize_t list_size, timsort_sortslice_t *lo)
 {
     assert(ms != NULL);
-    if (has_keyfunc)
-    {
-        /* The temporary space for merging will need at most half the list
-         * size rounded up.  Use the minimum possible space so we can use the
-         * rest of temparray for other things.  In particular, if there is
-         * enough extra space, listsort() will use it to store the keys.
-         */
-        ms->alloced = (list_size + 1) / 2;
-
-        /* ms->alloced describes how many keys will be stored at
-           ms->temparray, but we also need to store the values.  Hence,
-           ms->alloced is capped at half of MERGESTATE_TEMP_SIZE. */
-        if (MERGESTATE_TEMP_SIZE / 2 < ms->alloced)
-            ms->alloced = MERGESTATE_TEMP_SIZE / 2;
-        ms->a.values = &ms->temparray[ms->alloced];
-    }
-    else
-    {
-        ms->alloced = MERGESTATE_TEMP_SIZE;
-        ms->a.values = NULL;
-    }
+    ms->alloced = MERGESTATE_TEMP_SIZE;
     ms->a.keys = ms->temparray;
     ms->n = 0;
     ms->min_gallop = MIN_GALLOP;
@@ -576,12 +533,12 @@ merge_init(MergeState *ms, Py_ssize_t list_size, int has_keyfunc,
     ms->basekeys = lo->keys;
 }
 
-/* Free all the temp memory owned by the MergeState.  This must be called
- * when you're done with a MergeState, and may be called before then if
+/* Free all the temp memory owned by the timsort_mergestate_t.  This must be called
+ * when you're done with a timsort_mergestate_t, and may be called before then if
  * you want to free the temp memory early.
  */
 static void
-merge_freemem(MergeState *ms)
+merge_freemem(timsort_mergestate_t *ms)
 {
     assert(ms != NULL);
     if (ms->a.keys != ms->temparray)
@@ -595,31 +552,27 @@ merge_freemem(MergeState *ms)
  * Returns 0 on success and -1 if the memory can't be gotten.
  */
 static int
-merge_getmem(MergeState *ms, Py_ssize_t need)
+merge_getmem(timsort_mergestate_t *ms, timsort_ssize_t need)
 {
-    int multiplier;
 
     assert(ms != NULL);
     if (need <= ms->alloced)
         return 0;
 
-    multiplier = ms->a.values != NULL ? 2 : 1;
-
     /* Don't realloc!  That can cost cycles to copy the old data, but
      * we don't care what's in the block.
      */
     merge_freemem(ms);
-    if ((size_t)need > PY_SSIZE_T_MAX / sizeof(PyObject *) / multiplier)
+    if ((size_t)need > TIMSORT_SSIZE_T_MAX / sizeof(timsort_object_t *))
     {
         // PyErr_NoMemory();
         return -1;
     }
-    ms->a.keys = (PyObject **)malloc(multiplier * need * sizeof(PyObject *));
+    ms->a.keys = (timsort_object_t **)malloc(need * sizeof(timsort_object_t *));
     if (ms->a.keys != NULL)
     {
         ms->alloced = need;
-        if (ms->a.values != NULL)
-            ms->a.values = &ms->a.keys[need];
+
         return 0;
     }
     // PyErr_NoMemory();
@@ -633,14 +586,13 @@ merge_getmem(MergeState *ms, Py_ssize_t need)
  * should have na <= nb.  See listsort.txt for more info.  Return 0 if
  * successful, -1 if error.
  */
-static Py_ssize_t
-merge_lo(MergeState *ms, sortslice ssa, Py_ssize_t na,
-         sortslice ssb, Py_ssize_t nb)
+static timsort_ssize_t
+merge_lo(timsort_mergestate_t *ms, timsort_sortslice_t ssa, timsort_ssize_t na, timsort_sortslice_t ssb, timsort_ssize_t nb)
 {
-    Py_ssize_t k;
-    sortslice dest;
+    timsort_ssize_t k;
+    timsort_sortslice_t dest;
     int result = -1; /* guilty until proved innocent */
-    Py_ssize_t min_gallop;
+    timsort_ssize_t min_gallop;
 
     assert(ms && ssa.keys && ssb.keys && na > 0 && nb > 0);
     assert(ssa.keys + na == ssb.keys);
@@ -660,8 +612,8 @@ merge_lo(MergeState *ms, sortslice ssa, Py_ssize_t na,
     min_gallop = ms->min_gallop;
     for (;;)
     {
-        Py_ssize_t acount = 0; /* # of times A won in a row */
-        Py_ssize_t bcount = 0; /* # of times B won in a row */
+        timsort_ssize_t acount = 0; /* # of times A won in a row */
+        timsort_ssize_t bcount = 0; /* # of times B won in a row */
 
         /* Do the straightforward thing until (if ever) one run
          * appears to win consistently.
@@ -772,14 +724,14 @@ CopyB:
  * should have na >= nb.  See listsort.txt for more info.  Return 0 if
  * successful, -1 if error.
  */
-static Py_ssize_t
-merge_hi(MergeState *ms, sortslice ssa, Py_ssize_t na,
-         sortslice ssb, Py_ssize_t nb)
+static timsort_ssize_t
+merge_hi(timsort_mergestate_t *ms, timsort_sortslice_t ssa, timsort_ssize_t na,
+         timsort_sortslice_t ssb, timsort_ssize_t nb)
 {
-    Py_ssize_t k;
-    sortslice dest, basea, baseb;
+    timsort_ssize_t k;
+    timsort_sortslice_t dest, basea, baseb;
     int result = -1; /* guilty until proved innocent */
-    Py_ssize_t min_gallop;
+    timsort_ssize_t min_gallop;
 
     assert(ms && ssa.keys && ssb.keys && na > 0 && nb > 0);
     assert(ssa.keys + na == ssb.keys);
@@ -791,8 +743,7 @@ merge_hi(MergeState *ms, sortslice ssa, Py_ssize_t na,
     basea = ssa;
     baseb = ms->a;
     ssb.keys = ms->a.keys + nb - 1;
-    if (ssb.values != NULL)
-        ssb.values = ms->a.values + nb - 1;
+
     sortslice_advance(&ssa, na - 1);
 
     sortslice_copy_decr(&dest, &ssa);
@@ -805,8 +756,8 @@ merge_hi(MergeState *ms, sortslice ssa, Py_ssize_t na,
     min_gallop = ms->min_gallop;
     for (;;)
     {
-        Py_ssize_t acount = 0; /* # of times A won in a row */
-        Py_ssize_t bcount = 0; /* # of times B won in a row */
+        timsort_ssize_t acount = 0; /* # of times A won in a row */
+        timsort_ssize_t bcount = 0; /* # of times B won in a row */
 
         /* Do the straightforward thing until (if ever) one run
          * appears to win consistently.
@@ -918,12 +869,12 @@ CopyA:
 /* Merge the two runs at stack indices i and i+1.
  * Returns 0 on success, -1 on error.
  */
-static Py_ssize_t
-merge_at(MergeState *ms, Py_ssize_t i)
+static timsort_ssize_t
+merge_at(timsort_mergestate_t *ms, timsort_ssize_t i)
 {
-    sortslice ssa, ssb;
-    Py_ssize_t na, nb;
-    Py_ssize_t k;
+    timsort_sortslice_t ssa, ssb;
+    timsort_ssize_t na, nb;
+    timsort_ssize_t k;
 
     assert(ms != NULL);
     assert(ms->n >= 2);
@@ -979,7 +930,7 @@ merge_at(MergeState *ms, Py_ssize_t i)
  * Compute the "power" of the first run. See listsort.txt for details.
  */
 static int
-powerloop(Py_ssize_t s1, Py_ssize_t n1, Py_ssize_t n2, Py_ssize_t n)
+powerloop(timsort_ssize_t s1, timsort_ssize_t n1, timsort_ssize_t n2, timsort_ssize_t n)
 {
     int result = 0;
     assert(s1 >= 0);
@@ -994,8 +945,8 @@ powerloop(Py_ssize_t s1, Py_ssize_t n1, Py_ssize_t n2, Py_ssize_t n)
      * difference to the outcome, since the bits in the expansion of (2*i)/n
      * are merely shifted one position from those of i/n.
      */
-    Py_ssize_t a = 2 * s1 + n1; /* 2*a */
-    Py_ssize_t b = a + n1 + n2; /* 2*b */
+    timsort_ssize_t a = 2 * s1 + n1; /* 2*a */
+    timsort_ssize_t b = a + n1 + n2; /* 2*b */
     /* Emulate a/n and b/n one bit a time, until bits differ. */
     for (;;)
     {
@@ -1029,15 +980,15 @@ powerloop(Py_ssize_t s1, Py_ssize_t n1, Py_ssize_t n2, Py_ssize_t n)
  * Returns 0 on success, -1 on error.
  */
 static int
-found_new_run(MergeState *ms, Py_ssize_t n2)
+found_new_run(timsort_mergestate_t *ms, timsort_ssize_t n2)
 {
     assert(ms);
     if (ms->n)
     {
         assert(ms->n > 0);
-        struct s_slice *p = ms->pending;
-        Py_ssize_t s1 = p[ms->n - 1].base.keys - ms->basekeys; /* start index */
-        Py_ssize_t n1 = p[ms->n - 1].len;
+        struct timsort_slice_s *p = ms->pending;
+        timsort_ssize_t s1 = p[ms->n - 1].base.keys - ms->basekeys; /* start index */
+        timsort_ssize_t n1 = p[ms->n - 1].len;
         int power = powerloop(s1, n1, n2, ms->listlen);
         while (ms->n > 1 && p[ms->n - 2].power > power)
         {
@@ -1056,14 +1007,14 @@ found_new_run(MergeState *ms, Py_ssize_t n2)
  * Returns 0 on success, -1 on error.
  */
 static int
-merge_force_collapse(MergeState *ms)
+merge_force_collapse(timsort_mergestate_t *ms)
 {
-    struct s_slice *p = ms->pending;
+    struct timsort_slice_s *p = ms->pending;
 
     assert(ms);
     while (ms->n > 1)
     {
-        Py_ssize_t n = ms->n - 2;
+        timsort_ssize_t n = ms->n - 2;
         if (n > 0 && p[n - 1].len < p[n + 1].len)
             --n;
         if (merge_at(ms, n) < 0)
@@ -1082,10 +1033,10 @@ merge_force_collapse(MergeState *ms)
  *
  * See listsort.txt for more info.
  */
-static Py_ssize_t
-merge_compute_minrun(Py_ssize_t n)
+static timsort_ssize_t
+merge_compute_minrun(timsort_ssize_t n)
 {
-    Py_ssize_t r = 0; /* becomes 1 if any 1 bits are shifted off */
+    timsort_ssize_t r = 0; /* becomes 1 if any 1 bits are shifted off */
 
     assert(n >= 0);
     while (n >= MAX_MINRUN)
@@ -1107,10 +1058,9 @@ merge_compute_minrun(Py_ssize_t n)
 
 /* Heterogeneous compare: default, always safe to fall back on. */
 static int
-safe_object_compare(PyObject *v, PyObject *w, MergeState *ms)
+safe_object_compare(timsort_object_t *v, timsort_object_t *w, timsort_mergestate_t *ms)
 {
-    /* No assumptions necessary! */
-    return 0;
+    return ms->compfunc(v, w, ms->compfunc_arg);
 }
 
 /* An adaptive, stable, natural mergesort.  See listsort.txt.
@@ -1137,73 +1087,30 @@ ascending or descending, according to their function values.
 The reverse flag can be set to sort in descending order.
 [clinic start generated code]*/
 
-PyObject *
-list_sort_impl(PyListObject *self, keyfunc_t keyfunc, int reverse)
-/*[clinic end generated code: output=57b9f9c5e23fbe42 input=667bf25d0e3a3676]*/
+int list_sort_impl(timsort_list_t *self, int reverse, threeways_comparefunc_t compfunc, void *arg)
 {
-    MergeState ms;
-    Py_ssize_t nremaining;
-    Py_ssize_t minrun;
-    sortslice lo;
-    Py_ssize_t saved_ob_size;
-    PyObject **saved_ob_item;
-    PyObject **final_ob_item;
-    PyObject *result = NULL; /* guilty until proved innocent */
-    Py_ssize_t i;
-    PyObject **keys;
+    timsort_mergestate_t ms;
+    timsort_ssize_t nremaining;
+    timsort_ssize_t minrun;
+    timsort_sortslice_t lo;
+    timsort_ssize_t saved_ob_size;
+    timsort_object_t **saved_ob_item;
+    int result = 1; /* guilty until proved innocent */
 
     assert(self != NULL);
-    // assert(PyList_Check(self));
-    // if (keyfunc == Py_None)
-    //     keyfunc = NULL;
 
     /* The list is temporarily made empty, so that mutations performed
      * by comparison functions can't affect the slice of memory we're
      * sorting (allowing mutations during sorting is a core-dump
      * factory, since ob_item may change).
      */
-    saved_ob_size = Py_SIZE(self);
+    saved_ob_size = self->ob_size;
     saved_ob_item = self->ob_item;
-    // saved_allocated = self->allocated;
-    Py_SET_SIZE(self, 0);
-    // FT_ATOMIC_STORE_PTR_RELEASE(self->ob_item, NULL);
-    self->allocated = -1; /* any operation will reset it to >= 0 */
 
-    if (keyfunc == NULL)
-    {
-        keys = NULL;
-        lo.keys = saved_ob_item;
-        lo.values = NULL;
-    }
-    else
-    {
-        if (saved_ob_size < MERGESTATE_TEMP_SIZE / 2)
-            /* Leverage stack space we allocated but won't otherwise use */
-            keys = &ms.temparray[saved_ob_size + 1];
-        else
-        {
-            keys = malloc(sizeof(PyObject *) * saved_ob_size);
-            if (keys == NULL)
-            {
-                // PyErr_NoMemory();
-                goto keyfunc_fail;
-            }
-        }
+    self->ob_size = 0;
 
-        for (i = 0; i < saved_ob_size; i++)
-        {
-            keys[i] = keyfunc(saved_ob_item[i], &ms);
-            if (keys[i] == NULL)
-            {
-                if (saved_ob_size >= MERGESTATE_TEMP_SIZE / 2)
-                    free(keys);
-                goto keyfunc_fail;
-            }
-        }
-
-        lo.keys = keys;
-        lo.values = saved_ob_item;
-    }
+    lo.keys = saved_ob_item;
+    // lo.values = NULL;
 
     /* The pre-sort check: here's where we decide which compare function to use.
      * How much optimization is safe? We test for homogeneity with respect to
@@ -1211,11 +1118,13 @@ list_sort_impl(PyListObject *self, keyfunc_t keyfunc, int reverse)
      * set ms appropriately. */
     if (saved_ob_size > 1)
     {
+        ms.compfunc = compfunc;
+        ms.compfunc_arg = arg;
         ms.key_compare = safe_object_compare;
     }
     /* End of pre-sort check: ms is now set properly! */
 
-    merge_init(&ms, saved_ob_size, keys != NULL, &lo);
+    merge_init(&ms, saved_ob_size, &lo);
 
     nremaining = saved_ob_size;
     if (nremaining < 2)
@@ -1225,8 +1134,7 @@ list_sort_impl(PyListObject *self, keyfunc_t keyfunc, int reverse)
     applying a stable forward sort, then reversing the final result. */
     if (reverse)
     {
-        if (keys != NULL)
-            reverse_slice(&keys[0], &keys[saved_ob_size]);
+
         reverse_slice(&saved_ob_item[0], &saved_ob_item[saved_ob_size]);
     }
 
@@ -1236,7 +1144,7 @@ list_sort_impl(PyListObject *self, keyfunc_t keyfunc, int reverse)
     minrun = merge_compute_minrun(nremaining);
     do
     {
-        Py_ssize_t n;
+        timsort_ssize_t n;
 
         /* Identify next run. */
         n = count_run(&ms, &lo, nremaining);
@@ -1245,15 +1153,14 @@ list_sort_impl(PyListObject *self, keyfunc_t keyfunc, int reverse)
         /* If short, extend to min(minrun, nremaining). */
         if (n < minrun)
         {
-            const Py_ssize_t force = nremaining <= minrun ? nremaining : minrun;
+            const timsort_ssize_t force = nremaining <= minrun ? nremaining : minrun;
             if (binarysort(&ms, &lo, force, n) < 0)
                 goto fail;
             n = force;
         }
         /* Maybe merge pending runs. */
-        assert(ms.n == 0 || ms.pending[ms.n - 1].base.keys +
-                                    ms.pending[ms.n - 1].len ==
-                                lo.keys);
+        assert(ms.n == 0 || ms.pending[ms.n - 1].base.keys + ms.pending[ms.n - 1].len == lo.keys);
+
         if (found_new_run(&ms, n) < 0)
             goto fail;
         /* Push new run on stack. */
@@ -1269,45 +1176,22 @@ list_sort_impl(PyListObject *self, keyfunc_t keyfunc, int reverse)
     if (merge_force_collapse(&ms) < 0)
         goto fail;
     assert(ms.n == 1);
-    assert(keys == NULL
-               ? ms.pending[0].base.keys == saved_ob_item
-               : ms.pending[0].base.keys == &keys[0]);
+    assert(ms.pending[0].base.keys == saved_ob_item);
     assert(ms.pending[0].len == saved_ob_size);
     lo = ms.pending[0].base;
 
 succeed:
-    result = NULL;
-fail:
-    if (keys != NULL)
-    {
-        if (saved_ob_size >= MERGESTATE_TEMP_SIZE / 2)
-            free(keys);
-    }
+    result = 0;
 
-    if (self->allocated != -1 && result != NULL)
-    {
-        /* The user mucked with the list during the sort,
-         * and we don't already have another error to report.
-         */
-        // PyErr_SetString(PyExc_ValueError, "list modified during sort");
-        result = NULL;
-    }
+fail:
 
     if (reverse && saved_ob_size > 1)
         reverse_slice(saved_ob_item, saved_ob_item + saved_ob_size);
 
     merge_freemem(&ms);
 
-keyfunc_fail:
-    final_ob_item = self->ob_item;
-    i = Py_SIZE(self);
-    Py_SET_SIZE(self, saved_ob_size);
-    // FT_ATOMIC_STORE_PTR_RELEASE(self->ob_item, saved_ob_item);
-    // FT_ATOMIC_STORE_SSIZE_RELAXED(self->allocated, saved_allocated);
-    if (final_ob_item != NULL)
-    {
-        free(final_ob_item);
-    }
+    self->ob_size = saved_ob_size;
+
     return result;
 }
 #undef IFLT
