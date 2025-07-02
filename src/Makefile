@@ -1,12 +1,12 @@
 
 linux:
-	clang -O2 -g -fPIC -Wall -shared -o libtimsort.so timsort.c
+	clang -O3 -g -fPIC -Wall -shared -DNDEBUG -o libtimsort.so timsort.c
 
 mingw:
-	clang -O2 -g -fPIC -Wall -I/usr/local/include/ -shared -o libtimsort.dll timsort.c
+	clang -O3 -g -fPIC -Wall -I/usr/local/include/ -shared -DNDEBUG -o libtimsort.dll timsort.c
 
 macos:
-	clang -O2 -g -fPIC -Wall -dynamiclib -o libtimsort.dylib timsort.c
+	clang -O3 -g -fPIC -Wall -dynamiclib -DNDEBUG -o libtimsort.dylib timsort.c
 
 install:
 	cp timsort.h /usr/local/include/

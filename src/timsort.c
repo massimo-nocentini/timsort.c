@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include <time.h>
+
 #include "timsort.h"
 
 /* Reverse a slice of a list in place, from lo up to (exclusive) hi. */
@@ -29,39 +29,39 @@ reverse_slice(timsort_object_t **lo, timsort_object_t **hi)
 }
 
 TIMSORT_LOCAL_INLINE(void)
-    sortslice_copy(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j)
+sortslice_copy(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j)
 {
     s1->keys[i] = s2->keys[j];
 }
 
 TIMSORT_LOCAL_INLINE(void)
-    sortslice_copy_incr(timsort_sortslice_t *dst, timsort_sortslice_t *src)
+sortslice_copy_incr(timsort_sortslice_t *dst, timsort_sortslice_t *src)
 {
     *dst->keys++ = *src->keys++;
 }
 
 TIMSORT_LOCAL_INLINE(void)
-    sortslice_copy_decr(timsort_sortslice_t *dst, timsort_sortslice_t *src)
+sortslice_copy_decr(timsort_sortslice_t *dst, timsort_sortslice_t *src)
 {
     *dst->keys-- = *src->keys--;
 }
 
 TIMSORT_LOCAL_INLINE(void)
-    sortslice_memcpy(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j,
-                     timsort_ssize_t n)
+sortslice_memcpy(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j,
+                 timsort_ssize_t n)
 {
     memcpy(&s1->keys[i], &s2->keys[j], sizeof(timsort_object_t *) * n);
 }
 
 TIMSORT_LOCAL_INLINE(void)
-    sortslice_memmove(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j,
-                      timsort_ssize_t n)
+sortslice_memmove(timsort_sortslice_t *s1, timsort_ssize_t i, timsort_sortslice_t *s2, timsort_ssize_t j,
+                  timsort_ssize_t n)
 {
     memmove(&s1->keys[i], &s2->keys[j], sizeof(timsort_object_t *) * n);
 }
 
 TIMSORT_LOCAL_INLINE(void)
-    sortslice_advance(timsort_sortslice_t *slice, timsort_ssize_t n)
+sortslice_advance(timsort_sortslice_t *slice, timsort_ssize_t n)
 {
     slice->keys += n;
 }
@@ -106,6 +106,7 @@ binarysort(timsort_mergestate_t *ms, const timsort_sortslice_t *ss, timsort_ssiz
     /* assert a[:ok] is sorted */
     if (!ok)
         ++ok;
+
     /* Regular insertion sort has average- and worst-case O(n**2) cost
        for both # of comparisons and number of bytes moved. But its branches
        are highly predictable, and it loves sorted input (n-1 compares and no
@@ -129,80 +130,85 @@ binarysort(timsort_mergestate_t *ms, const timsort_sortslice_t *ss, timsort_ssiz
        Note that the number of bytes moved doesn't seem to matter. MAX_MINRUN
        of 64 is so small that the key and value pointers all fit in a corner
        of L1 cache, and moving things around in that is very fast. */
-#if 0 // ordinary insertion sort.
-    timsort_object_t * vpivot = NULL;
-    for (; ok < n; ++ok) {
-        pivot = a[ok];
-        if (has_values)
-            vpivot = v[ok];
-        for (M = ok - 1; M >= 0; --M) {
-            k = ISLT(pivot, a[M]);
-            if (k < 0) {
-                a[M + 1] = pivot;
-                if (has_values)
-                    v[M + 1] = vpivot;
-                goto fail;
-            }
-            else if (k) {
-                a[M + 1] = a[M];
-                if (has_values)
-                    v[M + 1] = v[M];
-            }
-            else
-                break;
-        }
-        a[M + 1] = pivot;
-        if (has_values)
-            v[M + 1] = vpivot;
-    }
-#else // binary insertion sort
-    timsort_ssize_t L, R;
-    for (; ok < n; ++ok)
-    {
-        /* set L to where a[ok] belongs */
-        L = 0;
-        R = ok;
-        pivot = a[ok];
-        /* Slice invariants. vacuously true at the start:
-         * all a[0:L]  <= pivot
-         * all a[L:R]     unknown
-         * all a[R:ok]  > pivot
-         */
-        assert(L < R);
-        do
+    if (ms->use_ordinary_insertion_sort)
+    { // ordinary insertion sort.
+        for (; ok < n; ++ok)
         {
-            /* don't do silly ;-) things to prevent overflow when finding
-               the midpoint; L and R are very far from filling a timsort_ssize_t */
-            M = (L + R) >> 1;
-#if 1 // straightforward, but highly unpredictable branch on random data
-            IFLT(pivot, a[M])
-            R = M;
-            else L = M + 1;
-#else
-            /* Try to get compiler to generate conditional move instructions
-               instead. Works fine, but leaving it disabled for now because
-               it's not yielding consistently faster sorts. Needs more
-               investigation. More computation in the inner loop adds its own
-               costs, which can be significant when compares are fast. */
-            k = ISLT(pivot, a[M]);
-            if (k < 0)
-                goto fail;
-            timsort_ssize_t Mp1 = M + 1;
-            R = k ? M : R;
-            L = k ? L : Mp1;
-#endif
-        } while (L < R);
-        assert(L == R);
-        /* a[:L] holds all elements from a[:ok] <= pivot now, so pivot belongs
-           at index L. Slide a[L:ok] to the right a slot to make room for it.
-           Caution: using memmove is much slower under MSVC 5; we're not
-           usually moving many slots. Years later: under Visual Studio 2022,
-           memmove seems just slightly slower than doing it "by hand". */
-        for (M = ok; M > L; --M)
-            a[M] = a[M - 1];
-        a[L] = pivot;
+            pivot = a[ok];
+
+            for (M = ok - 1; M >= 0; --M)
+            {
+                k = ISLT(pivot, a[M]);
+                if (k < 0)
+                {
+                    a[M + 1] = pivot;
+                    goto fail;
+                }
+                else if (k)
+                {
+                    a[M + 1] = a[M];
+                }
+                else
+                    break;
+            }
+            a[M + 1] = pivot;
+        }
     }
-#endif // pick binary or regular insertion sort
+    else
+    { // binary insertion sort
+        timsort_ssize_t L, R;
+        for (; ok < n; ++ok)
+        {
+            /* set L to where a[ok] belongs */
+            L = 0;
+            R = ok;
+            pivot = a[ok];
+            /* Slice invariants. vacuously true at the start:
+             * all a[0:L]  <= pivot
+             * all a[L:R]     unknown
+             * all a[R:ok]  > pivot
+             */
+            assert(L < R);
+            do
+            {
+                /* don't do silly ;-) things to prevent overflow when finding
+                   the midpoint; L and R are very far from filling a timsort_ssize_t */
+                M = (L + R) >> 1;
+
+                if (ms->unpredictable_branch_on_random_data)
+                { // straightforward, but highly unpredictable branch on random data
+                    IFLT(pivot, a[M])
+                    R = M;
+                    else L = M + 1;
+                }
+                else
+                {
+                    /* Try to get compiler to generate conditional move instructions
+                       instead. Works fine, but leaving it disabled for now because
+                       it's not yielding consistently faster sorts. Needs more
+                       investigation. More computation in the inner loop adds its own
+                       costs, which can be significant when compares are fast. */
+
+                    k = ISLT(pivot, a[M]);
+                    if (k < 0)
+                        goto fail;
+                    timsort_ssize_t Mp1 = M + 1;
+                    R = k ? M : R;
+                    L = k ? L : Mp1;
+                }
+
+            } while (L < R);
+            assert(L == R);
+            /* a[:L] holds all elements from a[:ok] <= pivot now, so pivot belongs
+               at index L. Slide a[L:ok] to the right a slot to make room for it.
+               Caution: using memmove is much slower under MSVC 5; we're not
+               usually moving many slots. Years later: under Visual Studio 2022,
+               memmove seems just slightly slower than doing it "by hand". */
+            for (M = ok; M > L; --M)
+                a[M] = a[M - 1];
+            a[L] = pivot;
+        }
+    } // pick binary or regular insertion sort
     return 0;
 
 fail:
@@ -1068,14 +1074,8 @@ safe_object_compare(timsort_object_t *v, timsort_object_t *w, timsort_mergestate
  * list will be some permutation of its input state (nothing is lost or
  * duplicated).
  */
-/*[clinic input]
-@critical_section
-list.sort
 
-    *
-    key as keyfunc: object = None
-    reverse: bool = False
-
+/*
 Sort the list in ascending order and return None.
 
 The sort is in-place (i.e. the list itself is modified) and stable (i.e. the
@@ -1085,9 +1085,13 @@ If a key function is given, apply it once to each list item and sort them,
 ascending or descending, according to their function values.
 
 The reverse flag can be set to sort in descending order.
-[clinic start generated code]*/
-
-int list_sort_impl(timsort_list_t *self, int reverse, threeways_comparefunc_t compfunc, void *arg)
+*/
+int list_sort_impl(timsort_list_t *self,
+                   int reverse,
+                   int use_ordinary_insertion_sort,
+                   int unpredictable_branch_on_random_data,
+                   threeways_comparefunc_t compfunc,
+                   void *arg)
 {
     timsort_mergestate_t ms;
     timsort_ssize_t nremaining;
@@ -1095,6 +1099,7 @@ int list_sort_impl(timsort_list_t *self, int reverse, threeways_comparefunc_t co
     timsort_sortslice_t lo;
     timsort_ssize_t saved_ob_size;
     timsort_object_t **saved_ob_item;
+
     int result = 1; /* guilty until proved innocent */
 
     assert(self != NULL);
@@ -1110,7 +1115,6 @@ int list_sort_impl(timsort_list_t *self, int reverse, threeways_comparefunc_t co
     self->ob_size = 0;
 
     lo.keys = saved_ob_item;
-    // lo.values = NULL;
 
     /* The pre-sort check: here's where we decide which compare function to use.
      * How much optimization is safe? We test for homogeneity with respect to
@@ -1121,6 +1125,8 @@ int list_sort_impl(timsort_list_t *self, int reverse, threeways_comparefunc_t co
         ms.compfunc = compfunc;
         ms.compfunc_arg = arg;
         ms.key_compare = safe_object_compare;
+        ms.use_ordinary_insertion_sort = use_ordinary_insertion_sort;
+        ms.unpredictable_branch_on_random_data = unpredictable_branch_on_random_data;
     }
     /* End of pre-sort check: ms is now set properly! */
 

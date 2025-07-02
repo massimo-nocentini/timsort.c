@@ -103,6 +103,9 @@ struct timsort_mergestate_s
 
     threeways_comparefunc_t compfunc;
     void *compfunc_arg;
+
+    int use_ordinary_insertion_sort;         /* Use ordinary insertion sort? */
+    int unpredictable_branch_on_random_data; /* Use straightforward pivot selection? */
 };
 
 typedef struct
@@ -111,4 +114,9 @@ typedef struct
     timsort_object_t **ob_item;
 } timsort_list_t;
 
-int list_sort_impl(timsort_list_t *self, int reverse, threeways_comparefunc_t compfunc, void *arg);
+int list_sort_impl(timsort_list_t *self,
+                   int reverse,
+                   int use_ordinary_insertion_sort,
+                   int unpredictable_branch_on_random_data,
+                   threeways_comparefunc_t compfunc,
+                   void *arg);
