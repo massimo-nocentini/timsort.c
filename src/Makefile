@@ -27,3 +27,6 @@ wasm-32:
 # if you have spiffy installed, otherwise `sudo chicken-install spiffy`
 web:
 	csi -e "(import spiffy) (start-server)" 
+
+wasi-libc:
+	git clone https://github.com/WebAssembly/wasi-libc.git && cd wasi-libc && make CC=clang && sudo make CC=clang install && cd .. && rm -rf wasi-libc
