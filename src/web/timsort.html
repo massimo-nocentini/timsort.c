@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<!-- add.html -->
+<html>
+
+<head></head>
+
+<body>
+    <script type="module">
+        (async () => {
+            const memory = new WebAssembly.Memory({ initial: 2 });
+            const response = await fetch('timsort.wasm');
+            const bytes = await response.arrayBuffer();
+            const { instance } = await WebAssembly.instantiate(bytes, { env: { memory } });
+
+            console.log('The answer is: ' + instance.exports.timsort(1, 2));
+        })();
+    </script>
+</body>
+
+</html>

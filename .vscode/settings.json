@@ -4,6 +4,7 @@
         "type_traits": "c",
         "utility": "c",
         "local_lim.h": "c",
-        "initializer_list": "c"
+        "initializer_list": "c",
+        "types.h": "c"
     }
 }

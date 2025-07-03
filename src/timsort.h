@@ -1,6 +1,7 @@
 
-
-#include <limits.h>
+// #include <stdio.h>
+// #include <limits.h>
+#include <sys/types.h>
 
 #define TIMSORT_SSIZE_T_MAX __LONG_MAX__
 #define TIMSORT_LOCAL_INLINE(type) static inline type
@@ -28,7 +29,7 @@
  */
 #define MAX_MINRUN 64
 
-typedef __ssize_t timsort_ssize_t;
+typedef ssize_t timsort_ssize_t;
 
 typedef void *timsort_object_t;
 
