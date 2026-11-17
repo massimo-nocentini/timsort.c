@@ -1,6 +1,9 @@
 
 /*
-    This is a glue c file for importing delta client c functions into Lua workflow.
+    timsort.c: the sort of CPython's lists (listsort of Objects/listobject.c,
+    CPython 3.13/3.14) as a standalone C function, list_sort_impl (timsort.h).
+    Derived from CPython, Copyright (c) 2001 Python Software Foundation,
+    distributed under the PSF License Version 2; see README.md.
 */
 
 #include <stdio.h>
@@ -71,7 +74,7 @@ sortslice_advance(timsort_sortslice_t *slice, timsort_ssize_t n)
  * Returns -1 on error, 1 if x < y, 0 if x >= y.
  */
 
-#define ISLT(X, Y) (*(ms->key_compare))(X, Y, ms)
+#define ISLT(X, Y) (*(ms->compfunc))(X, Y, ms->compfunc_arg)
 
 /* Compare X to Y via "<".  Goto "fail" if the comparison raises an
    error.  Else "k" is set to true iff X<Y, and an "if (k)" block is
@@ -359,7 +362,7 @@ gallop_left(timsort_mergestate_t *ms, timsort_object_t *key, timsort_object_t **
     timsort_ssize_t lastofs;
     timsort_ssize_t k;
 
-    assert(key && a && n > 0 && hint >= 0 && hint < n);
+    assert(a && n > 0 && hint >= 0 && hint < n);
 
     a += hint;
     lastofs = 0;
@@ -453,7 +456,7 @@ gallop_right(timsort_mergestate_t *ms, timsort_object_t *key, timsort_object_t *
     timsort_ssize_t lastofs;
     timsort_ssize_t k;
 
-    assert(key && a && n > 0 && hint >= 0 && hint < n);
+    assert(a && n > 0 && hint >= 0 && hint < n);
 
     a += hint;
     lastofs = 0;
@@ -1170,7 +1173,7 @@ int list_sort_impl(timsort_list_t *self,
         if (found_new_run(&ms, n) < 0)
             goto fail;
         /* Push new run on stack. */
-        assert(ms.n < MAX_MERGE_PENDING);
+        assert((size_t)ms.n < MAX_MERGE_PENDING);
         ms.pending[ms.n].base = lo;
         ms.pending[ms.n].len = n;
         ++ms.n;

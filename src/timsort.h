@@ -1,19 +1,18 @@
+#ifndef TIMSORT_H
+#define TIMSORT_H
 
-// #include <stdio.h>
-// #include <limits.h>
-#include <sys/types.h>
+#include <stddef.h>
+#include <stdint.h>
 
-#define TIMSORT_SSIZE_T_MAX __LONG_MAX__
+#define TIMSORT_SSIZE_T_MAX PTRDIFF_MAX
 #define TIMSORT_LOCAL_INLINE(type) static inline type
-#define SIZEOF_SIZE_T sizeof(size_t)
-#define MAX_MERGE_PENDING (SIZEOF_SIZE_T * 8)
 
 /* The maximum number of entries in a timsort_mergestate_t's pending-runs stack.
  * For a list with n elements, this needs at most floor(log2(n)) + 1 entries
  * even if we didn't force runs to a minimal length.  So the number of bits
  * in a timsort_ssize_t is plenty large enough for all cases.
  */
-#define MAX_MERGE_PENDING (SIZEOF_SIZE_T * 8)
+#define MAX_MERGE_PENDING (sizeof(size_t) * 8)
 
 /* When we get into galloping mode, we stay there until both runs win less
  * often than MIN_GALLOP consecutive times.  See listsort.txt for more info.
@@ -29,7 +28,7 @@
  */
 #define MAX_MINRUN 64
 
-typedef ssize_t timsort_ssize_t;
+typedef ptrdiff_t timsort_ssize_t;
 
 typedef void *timsort_object_t;
 
@@ -115,9 +114,19 @@ typedef struct
     timsort_object_t **ob_item;
 } timsort_list_t;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int list_sort_impl(timsort_list_t *self,
                    int reverse,
                    int use_ordinary_insertion_sort,
                    int unpredictable_branch_on_random_data,
                    threeways_comparefunc_t compfunc,
                    void *arg);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* TIMSORT_H */
